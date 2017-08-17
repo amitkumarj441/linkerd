@@ -77,7 +77,10 @@ private[runtime] trait DecodingStream[+T] extends Stream[T] {
     frames.read().transform {
       case Throw(rst: h2.Reset) => Future.exception(GrpcStatus.fromReset(rst))
       case Throw(e) => Future.exception(e)
-      case Return(t: h2.Frame.Trailers) => Future.exception(getStatus(t))
+      case Return(t: h2.Frame.Trailers) =>
+        val status = getStatus(t)
+        t.release()
+        Future.exception(status)
       case Return(f: h2.Frame.Data) =>
         decodeFrame(s0, f, decoder) match {
           case Decoded(s1, Some(msg)) => Future.value(s1 -> Return(msg))
@@ -106,7 +109,7 @@ object DecodingStream {
   ): Stream[T] = new DecodingStream[T] {
     protected[this] val frames: h2.Stream = rsp.stream
     protected[this] def decoder: ByteBuffer => T = decodeF
-    protected[this] val getStatus: h2.Frame.Trailers => GrpcStatus = GrpcStatus.fromTrailers(_)
+    protected[this] val getStatus: h2.Frame.Trailers => GrpcStatus = GrpcStatus.fromHeaders(_)
   }
 
   private sealed trait RecvState

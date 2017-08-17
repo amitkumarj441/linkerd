@@ -18,10 +18,10 @@ addSbtPlugin("com.eed3si9n"      % "sbt-assembly"  % "0.14.1")
 addSbtPlugin("se.marcuslonnberg" % "sbt-docker"    % "1.4.1")
 
 // scrooge
-addSbtPlugin("com.twitter" %% "scrooge-sbt-plugin" % "4.16.0")
+addSbtPlugin("com.twitter" %% "scrooge-sbt-plugin" % "4.18.0")
 
 // microbenchmarking for tests.
-addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.2.6")
+addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.2.27")
 
 // pgp signing for publishing to sonatype
 addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.0.0")

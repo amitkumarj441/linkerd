@@ -63,7 +63,7 @@ Due to the implmentation of file watches in Java, this namer consumes a high
 amount of CPU and is not suitable for production use.
 </aside>
 
-linkerd ships with a simple file-based service discovery mechanism, called the
+linkerd ships with a simple file-based service discovery mechanism called the
 *file-based namer*. This system is intended to act as a structured form of
 basic host lists.
 
@@ -251,7 +251,7 @@ labelSelector | none | The key of the label to filter services.
 
 <aside class="notice">
 The Kubernetes namer does not support TLS.  Instead, you should run `kubectl proxy` on each host
-which will create a local proxy for securely talking to the Kubernetes cluster API. See (the k8s guide)[https://linkerd.io/doc/latest/k8s/] for more information.
+which will create a local proxy for securely talking to the Kubernetes cluster API. See [the k8s guide](https://linkerd.io/doc/latest/k8s/) for more information.
 </aside>
 
 ### K8s Path Parameters
@@ -304,7 +304,7 @@ labelSelector | none | The key of the label to filter services.
 
 <aside class="notice">
 The Kubernetes namer does not support TLS.  Instead, you should run `kubectl proxy` on each host
-which will create a local proxy for securely talking to the Kubernetes cluster API. See (the k8s guide)[https://linkerd.io/doc/latest/k8s/] for more information.
+which will create a local proxy for securely talking to the Kubernetes cluster API. See [the k8s guide](https://linkerd.io/doc/latest/k8s/) for more information.
 </aside>
 
 ### K8s External Path Parameters
@@ -421,7 +421,7 @@ labelSelector | none | The key of the label to filter services.
 
 <aside class="notice">
 The Kubernetes namer does not support TLS.  Instead, you should run `kubectl proxy` on each host
-which will create a local proxy for securely talking to the Kubernetes cluster API. See (the k8s guide)[https://linkerd.io/doc/latest/k8s/] for more information.
+which will create a local proxy for securely talking to the Kubernetes cluster API. See [the k8s guide](https://linkerd.io/doc/latest/k8s/) for more information.
 </aside>
 
 ### K8s Namespaced Path Parameters
@@ -439,7 +439,49 @@ port-name | yes | The port name.
 svc-name | yes | The name of the service.
 label-value | yes if `labelSelector` is defined | The label value used to filter services.
 
+### Istio Configuration
 
+> Configure an Istio namer
+
+```yaml
+namers:
+- kind: io.l5d.k8s.istio
+  experimental: true
+  host: istio-manager.default.svc.cluster.local
+  port: 8080
+```
+
+> Then reference the namer in the dtab to use it:
+
+```
+dtab: |
+  /svc/reviews => /#/io.l5d.k8s.istio/version:v1/http/reviews;
+```
+
+The [Istio](https://istio.io/) namer uses the Istio-Manager's Service Discovery Service to lookup
+the endpoints for a given namespace, port, service, and list of label selectors.
+
+Key | Default Value | Description
+--- | ------------- | -----------
+prefix | `io.l5d.k8s.istio` | Resolves names with `/#/<prefix>`.
+experimental | _required_ | Because this namer is still considered experimental, you must set this to `true` to use it.
+host | `istio-manager.default.svc.cluster.local` | The host of the Istio-Manager.
+port | `8080` | The port of the Istio-Manager.
+
+### Istio Path Parameters
+
+> Dtab Path Format
+
+```yaml
+/#/<prefix>/<cluster>/<labels>/<port-name>
+```
+
+Key | Required | Description
+--- | -------- | -----------
+prefix | yes | Tells linkerd to resolve the request path using the Istio namer.
+port-name | yes | The port name.
+cluster | yes | The fully qualified name of the service.
+labels | yes | A `::` delimited list of `label:value` pairs.  Only endpoints that match all of these label selectors will be returned.
 
 <a name="marathon"></a>
 ## Marathon service discovery
@@ -480,6 +522,7 @@ port | `80` | The Marathon master port.
 uriPrefix | none | The Marathon API prefix. This prefix depends on your Marathon configuration. For example, running Marathon locally, the API is available at `localhost:8080/v2/`, while the default setup on AWS/DCOS is `$(dcos config show core.dcos_url)/marathon/v2/apps`.
 ttlMs | `5000` | The polling interval in milliseconds against the Marathon API.
 useHealthCheck | `false` | If `true`, exclude app instances that are failing Marathon health checks. Even if `false`, linkerd's built-in resiliency algorithms will still apply.
+tls | no tls | The Marathon namer will make requests to Marathon/DCOS using TLS if this parameter is provided. This is useful when DC/OS is run in [strict](https://docs.mesosphere.com/latest/security/#security-modes) security mode. It must be a [client TLS](#client-tls) object. Note that the `clientAuth` config value will be unused, as DC/OS does not use mutual TLS.
 
 ### Marathon Path Parameters
 
@@ -593,6 +636,7 @@ kind: `io.l5d.rewrite`
 ```yaml
 namers:
 - kind: io.l5d.rewrite
+  prefix: /rewrite
   pattern: "/{service}/api"
   name: "/srv/{service}"
 ```
@@ -601,10 +645,10 @@ namers:
 
 ```
 dtab: |
-  /svc => /#/io.l5d.rewrite
+  /svc => /#/rewrite
 ```
 
-A namer that completely rewrites a path.  This is useful to do arbitrary
+A namer that completely rewrites a path.  This is useful for doing arbitrary
 reordering of the path segments that is not possible using standard prefix
 replacement.  While this is a general purpose tool for reordering path
 segments, it cannot be used to modify or split individual segments (for
@@ -617,7 +661,7 @@ the value of the matching path segment and may be used in the final name.
 
 Key     | Default Value    | Description
 ------- | ---------------- | -----------
-prefix  | `io.l5d.rewrite` | Resolves names with `/#/<prefix>`.
+prefix  | _required_       | Resolves names with `/#/<prefix>`.
 pattern | _required_       | If the name matches this prefix, replace it with the name configured in the `name` parameter.  Wildcards and variable capture are allowed (see: `io.buoyant.namer.util.PathMatcher`).
 name    | _required_       | The replacement name.  Variables captured in the pattern may be used in this string.
 
@@ -699,8 +743,8 @@ would be rewritten to `/pfx/foo/resource/name`
 ```
 
 Rewrites a name of the form "host:ip" as a path with host followed by ip. Does
-not not support IPv6 host IPs (because ipv6 notation doesn't work in Paths as-
-is, due to bracket characters).
+not support IPv6 host IPs (because IPv6 notation doesn't work in Paths as-is
+due to bracket characters).
 
 For example,
 `/$/io.buoyant.hostportPfx/pfx/host:port/etc`
@@ -720,8 +764,8 @@ would be rewritten to `/pfx/host/port/etc`.
 ```
 
 Rewrites a name of the form "host:ip" as a path with ip followed by host. Does
-not not support IPv6 host IPs (because ipv6 notation doesn't work in Paths as-
-is, due to bracket characters).
+not support IPv6 host IPs (because IPv6 notation doesn't work in Paths as-is
+due to bracket characters).
 
 For example,
 `/$/io.buoyant.porthostPfx/pfx/host:port/etc`

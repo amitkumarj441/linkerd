@@ -32,6 +32,30 @@ trait Stream {
    * If the stream is reset prematurely, onEnd fails with a [[Reset]].
    */
   def onEnd: Future[Unit]
+
+  /**
+   * Wraps this [[Stream]] with a [[StreamOnFrame]] that calls the
+   * provided function on each frame after [[Stream.read read()]]
+   *
+   * @param onFrame the function to call on each frame.
+   * @return a [[StreamOnFrame]] [[StreamProxy]] wrapping this [[Stream]]
+   */
+  def onFrame(onFrame: Try[Frame] => Unit): Stream = new StreamOnFrame(this, onFrame)
+
+  /**
+   * Wraps this [[Stream]]  with a function `f` that is called on each frame in
+   * the stream. The sequence of [[Frame]]s yielded by `f` will be inserted into
+   * the stream in order at the current position.
+   *
+   * @note that in order to avoid violating flow control, `f` must either take
+   *       ownership over the frame and release it, or return it in the returned
+   *       sequence of frames.
+   * @see [[StreamFlatMap]]
+   * @param f the function called on each [[Stream]]
+   * @return a [[StreamFlatMap]] [[StreamProxy]] wrapping this [[Stream]]
+   */
+  def flatMap(f: Frame => Seq[Frame]): Stream = new StreamFlatMap(this, f)
+
 }
 
 /**
@@ -60,7 +84,7 @@ object Stream {
     def close(): Unit
   }
 
-  private trait AsyncQueueReader extends Stream {
+  private[h2] trait AsyncQueueReader extends Stream {
     protected[this] val frameQ: AsyncQueue[Frame]
 
     override def isEmpty = false
@@ -120,15 +144,10 @@ object Stream {
   def const(s: String): Stream =
     const(Buf.Utf8(s))
 
-  def empty(q: AsyncQueue[Frame]): Stream =
-    new AsyncQueueReader {
-      override protected[this] val frameQ = q
-      override def isEmpty = true
-    }
+  def empty(): Stream with Writer = empty(new AsyncQueue[Frame](1))
 
-  def empty(): Stream with Writer =
+  def empty(frameQ: AsyncQueue[Frame]): Stream with Writer =
     new Stream with Writer {
-      private[this] val frameQ = new AsyncQueue[Frame](1)
       override def isEmpty = true
       override def onEnd = Future.Unit
       override def read(): Future[Frame] = failOnInterrupt(frameQ.poll(), frameQ)

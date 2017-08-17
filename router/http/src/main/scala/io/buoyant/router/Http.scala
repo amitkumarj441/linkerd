@@ -5,7 +5,6 @@ import com.twitter.finagle.http.{Request, Response, TlsFilter}
 import com.twitter.finagle.http.service.HttpResponseClassifier
 import com.twitter.finagle.param.{ProtocolLibrary, ResponseClassifier}
 import com.twitter.finagle.server.StackServer
-import com.twitter.finagle.service.StatsFilter
 import com.twitter.finagle.{Http => FinagleHttp, Server => FinagleServer, http => fhttp, _}
 import io.buoyant.router.ClassifiedRetries.ResponseDiscarder
 import io.buoyant.router.Http.param.HttpIdentifier
@@ -36,7 +35,7 @@ object Http extends Router[Request, Response] with FinagleServer[Request, Respon
      */
     val client: StackClient[Request, Response] = FinagleHttp.client
       .transformed(StackRouter.Client.mkStack(_))
-      .transformed(_.replace(http.TracingFilter.role, http.TracingFilter.module))
+      .transformed(_.replace(TracingFilter.role, TracingFilter.module))
       .transformed(_.remove(TlsFilter.role))
 
     val responseDiscarder = ResponseDiscarder[Response] { rsp =>
@@ -81,8 +80,8 @@ object Http extends Router[Request, Response] with FinagleServer[Request, Respon
 
   object Server {
     val stack: Stack[ServiceFactory[Request, Response]] =
-      (AddForwardedHeader.module +: FinagleHttp.Server.stack)
-        .insertBefore(http.TracingFilter.role, ProxyRewriteFilter.module)
+      (AddForwardedHeader.module +: FinagleHttp.server.stack)
+        .insertBefore(TracingFilter.role, ProxyRewriteFilter.module)
 
     private val serverResponseClassifier = ClassifiedRetries.orElse(
       ClassifierFilter.successClassClassifier,

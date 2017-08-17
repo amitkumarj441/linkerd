@@ -32,7 +32,7 @@ object Base {
 class Base extends Build {
   import Base._
 
-  val headVersion = "1.1.0"
+  val headVersion = "1.1.3"
 
   object Git {
     def git(arg: String, args: String*) = Process("git" +: arg +: args)
@@ -63,7 +63,7 @@ class Base extends Build {
     version := Git.version,
     homepage := Some(url("https://linkerd.io")),
     scalaVersion in GlobalScope := "2.12.1",
-    crossScalaVersions in GlobalScope := Seq("2.11.8", "2.12.1"),
+    crossScalaVersions in GlobalScope := Seq("2.11.11", "2.12.1"),
     ivyScala := ivyScala.value.map(_.copy(overrideScalaVersion = true)),
     scalacOptions ++=
       Seq("-Xfatal-warnings", "-deprecation", "-Ywarn-value-discard", "-feature"),
@@ -101,9 +101,9 @@ class Base extends Build {
           <url>https://buoyant.io/</url>
         </developer>
       </developers>,
-    publishTo <<= version { (v: String) =>
+    publishTo := {
       val nexus = "https://oss.sonatype.org/"
-      if (v.trim.endsWith("SNAPSHOT"))
+      if (version.value.trim.endsWith("SNAPSHOT"))
         Some("snapshots" at nexus + "content/repositories/snapshots")
       else
         Some("releases"  at nexus + "service/local/staging/deploy/maven2")
@@ -153,9 +153,9 @@ class Base extends Build {
 
   val appPackagingSettings = baseDockerSettings ++ appAssemblySettings ++ Seq(
     assemblyJarName in assembly := s"${name.value}-${version.value}-${configuration.value}-exec",
-    docker <<= docker dependsOn (assembly in configuration),
+    docker := (docker dependsOn (assembly in configuration)).value,
     dockerEnvPrefix := "",
-    dockerJavaImage <<= (dockerJavaImage in Global).?(_.getOrElse("library/java:openjdk-8-jre")),
+    dockerJavaImage := (dockerJavaImage in Global).?(_.getOrElse("openjdk:8u131-jre")).value,
     dockerfile in docker := new Dockerfile {
       val envPrefix = dockerEnvPrefix.value.toUpperCase
       val home = s"/${organization.value}/${name.value}/${version.value}"
@@ -168,12 +168,14 @@ class Base extends Build {
       copy((assemblyOutputPath in assembly).value, exec)
       entryPoint(exec)
     },
-    dockerTag <<= (dockerTag in Global).or((version, configuration) { (v, c) => s"${v}-${c}" }),
-    imageName in docker := ImageName(
+    dockerTag += (dockerTag in Global).or( initialize[String] { _ =>
+      s"$version-$configuration"
+    }).value,
+    imageNames in docker := Seq(ImageName(
       namespace = Some("buoyantio"),
       repository = name.value,
       tag = Some(dockerTag.value)
-    )
+    ))
   )
 
   // Examples are named by a .yaml config file
@@ -208,6 +210,8 @@ class Base extends Build {
   val testUtil = projectDir("test-util")
     .settings(coverageExcludedPackages := "io.buoyant.test.*")
     .settings(libraryDependencies += Deps.scalatest)
+    .settings(libraryDependencies += Deps.scalacheck)
+    .settings(libraryDependencies += Deps.junit)
     .settings(libraryDependencies ++= {
       val deps = Deps.twitterUtil("core") :: Deps.twitterUtil("logging") :: Nil
       if (doDevelopTwitterDeps.value) {
@@ -216,6 +220,7 @@ class Base extends Build {
         }
       } else deps
     })
+    .settings(libraryDependencies ++= Deps.jackson)
 
   /**
    * Extends Project with helpers to reduce boilerplate in project definitions.
@@ -277,11 +282,11 @@ class Base extends Build {
 
     /** Writes build metadata into the projects resources */
     def withBuildProperties(path: String): Project = project
-      .settings((resourceGenerators in Compile) <+=
-        (resourceManaged in Compile, name, version).map { (dir, name, ver) =>
+      .settings((resourceGenerators in Compile) += task[Seq[File]] {
+          val dir = (resourceManaged in Compile).value
           val rev = Git.revision
           val build = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date)
-          val contents = s"name=$name\nversion=$ver\nbuild_revision=$rev\nbuild_name=$build"
+          val contents = s"name=${name.value}\nversion=${version.value}\nbuild_revision=$rev\nbuild_name=$build"
           val file = dir / path / "build.properties"
           IO.write(file, contents)
           Seq(file)

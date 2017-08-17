@@ -1,11 +1,13 @@
 package io.buoyant.router
 package h2
 
-import com.twitter.finagle.{Dtab, Failure, Path}
+import com.twitter.concurrent.AsyncQueue
+import com.twitter.finagle.{ChannelClosedException, Dtab, Failure, Path}
 import com.twitter.finagle.buoyant.Dst
 import com.twitter.finagle.buoyant.h2._
 import com.twitter.logging.Level
 import com.twitter.util.{Future, Promise, Throw}
+import io.buoyant.router.h2.ClassifiedRetries.BufferSize
 import io.buoyant.test.FunSuite
 import java.net.InetSocketAddress
 
@@ -34,8 +36,8 @@ class RouterEndToEndTest
       .factory())
     val client = upstream(router)
     try {
-      client.get("felix")(_ == Some("meow"))
-      client.get("clifford", "/the/big/red/dog")(_ == Some("woof"))
+      await(client.get("felix")(_ == Some("meow")))
+      await(client.get("clifford", "/the/big/red/dog")(_ == Some("woof")))
     } finally {
       setLogLevel(Level.OFF)
       await(client.close())
@@ -134,23 +136,26 @@ class RouterEndToEndTest
     }
     val router = H2.serve(new InetSocketAddress(0), H2.router
       .configured(identifierParam)
+      .configured(BufferSize(0L, 0L))
       .factory())
     val client = upstream(router)
     try {
-      val clientLocalStream, serverLocalStream = Stream()
+      val clientLocalQ, serverLocalQ = new AsyncQueue[Frame]
+      val clientLocalStream = Stream(clientLocalQ)
+      val serverLocalStream = Stream(serverLocalQ)
       val req = Request("http", Method.Get, "clifford", "/path", clientLocalStream)
       val rspF = client(req)
       val reqStream = await(dogReqP)
       assert(!rspF.isDefined)
 
       dogRspP.setValue(serverLocalStream)
+      serverLocalQ.offer(Frame.Data("boop", eos = false))
       val rsp = await(rspF)
       val reqReadF = reqStream.read()
       val rspReadF = rsp.stream.read()
 
-      await(client.close())
+      clientLocalQ.fail(new ChannelClosedException())
       assert(await(reqReadF.liftToTry) == Throw(Reset.Cancel))
-      assert(await(rspReadF.liftToTry) == Throw(Reset.Cancel))
 
     } finally {
       setLogLevel(Level.OFF)
